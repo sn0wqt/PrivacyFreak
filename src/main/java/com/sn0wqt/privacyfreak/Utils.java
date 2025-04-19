@@ -92,6 +92,10 @@ public class Utils {
     /**
      * Strips all metadata from any common image format (JPEG, PNG, GIF, etc.)
      * and returns a new InputStream with the clean image data.
+     * 
+     * @param in original image bytes
+     * @return InputStream of the metadata‑stripped image
+     * @return InputStream of the metadata‑stripped image
      */
     public static InputStream stripImageMetadata(InputStream in) throws IOException {
         // Read all bytes so we can probe and reload
