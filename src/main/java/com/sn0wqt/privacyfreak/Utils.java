@@ -19,6 +19,9 @@ import javax.imageio.stream.ImageOutputStream;
 
 import com.drew.imaging.ImageMetadataReader;
 import com.drew.imaging.ImageProcessingException;
+import com.drew.imaging.avi.AviMetadataReader;
+import com.drew.imaging.mp4.Mp4MetadataReader;
+import com.drew.imaging.quicktime.QuickTimeMetadataReader;
 import com.drew.metadata.Directory;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.Tag;
@@ -29,35 +32,61 @@ import com.github.kokorin.jaffree.ffmpeg.PipeOutput;
 public class Utils {
 
     /**
-     * Reads all metadata directories (EXIF, IPTC, JPEG, etc.) from an image
-     * InputStream
-     * and returns a newline‑delimited summary of "Directory — Tag = Value".
+     * Reads metadata from images (JPEG, PNG, GIF, etc.) or
+     * video containers (MP4, MOV, AVI, MKV) based on file extension.
+     *
+     * @param in       the file’s bytes
+     * @param filename the original filename (used to pick the reader)
+     * @return newline‐delimited "Directory — Tag = Value"
      */
-    public static String readImageMetadata(InputStream in)
-            throws ImageProcessingException, IOException {
-        Metadata metadata = ImageMetadataReader.readMetadata(in);
-        StringBuilder sb = new StringBuilder();
+    public static String readMetadata(InputStream in, String filename)
+            throws IOException, ImageProcessingException {
+        try {
+            // buffer so we can re‑read for whichever reader we choose
+            byte[] data = in.readAllBytes();
+            Metadata metadata;
 
-        for (Directory dir : metadata.getDirectories()) {
-            for (Tag tag : dir.getTags()) {
-                sb.append(dir.getName())
-                        .append(" — ")
-                        .append(tag.getTagName())
-                        .append(" = ")
-                        .append(tag.getDescription())
-                        .append("\n");
+            String lower = filename.toLowerCase();
+            if (lower.endsWith(".mp4") || lower.endsWith(".m4a") || lower.endsWith(".m4v")) {
+                metadata = Mp4MetadataReader.readMetadata(new ByteArrayInputStream(data));
+
+            } else if (lower.endsWith(".mov")) {
+                metadata = QuickTimeMetadataReader.readMetadata(new ByteArrayInputStream(data));
+
+            } else if (lower.endsWith(".avi")) {
+                metadata = AviMetadataReader.readMetadata(new ByteArrayInputStream(data));
+            
+            } else {
+                // fallback to images or other formats
+                metadata = ImageMetadataReader.readMetadata(new ByteArrayInputStream(data));
             }
-            if (dir.hasErrors()) {
-                for (String err : dir.getErrors()) {
-                    sb.append("[ERROR in ")
-                            .append(dir.getName())
-                            .append("] ")
-                            .append(err)
+
+            // now dump it to text
+            StringBuilder sb = new StringBuilder();
+            for (Directory dir : metadata.getDirectories()) {
+                for (Tag tag : dir.getTags()) {
+                    sb.append(dir.getName())
+                            .append(" — ")
+                            .append(tag.getTagName())
+                            .append(" = ")
+                            .append(tag.getDescription())
                             .append("\n");
                 }
+                if (dir.hasErrors()) {
+                    for (String err : dir.getErrors()) {
+                        sb.append("[ERROR in ")
+                                .append(dir.getName())
+                                .append("] ")
+                                .append(err)
+                                .append("\n");
+                    }
+                }
             }
+            return sb.toString().trim();
+
+        } catch (Exception e) {
+            throw new IOException("Failed to read metadata: " + e.getMessage(), e);
         }
-        return sb.toString().trim();
     }
 
     /**
