@@ -1,5 +1,13 @@
 # Privacy Freak Bot
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/sn0wqt/privacyfreak/assets/logo.png" alt="Privacy Freak Bot Logo" width="200" height="200">
+</p>
+
+<p align="center">
+  <em>A Telegram bot that helps protect your privacy by inspecting and removing metadata from your files</em>
+</p>
+
 #### Description:
 
 The **Privacy Freak Bot** is a **Telegram bot** designed to help protect your privacy by inspecting and removing metadata from media files. Built with Java, it allows you to easily examine what hidden information might be embedded in your images or videos, and strip that metadata from JPEGs to ensure your privacy when sharing files. No more accidentally leaking location data, device information, or other sensitive details!
