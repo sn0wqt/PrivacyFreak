@@ -22,9 +22,6 @@ import com.drew.imaging.ImageProcessingException;
 import com.drew.metadata.Directory;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.Tag;
-import com.github.kokorin.jaffree.ffmpeg.FFmpeg;
-import com.github.kokorin.jaffree.ffmpeg.PipeInput;
-import com.github.kokorin.jaffree.ffmpeg.PipeOutput;
 
 public class Utils {
 
@@ -133,29 +130,6 @@ public class Utils {
         } catch (ImagingException e) {
             throw new IOException("Failed to strip JPEG metadata: " + e.getMessage(), e);
         }
-    }
-
-    /**
-     * Strips all metadata from a video by piping data through FFmpeg via Jaffree.
-     *
-     * @param in     original video bytes
-     * @param format container format (e.g. "mp4", "matroska", "mov")
-     * @return InputStream of the metadata‑stripped video
-     */
-    public static InputStream stripVideoMetadata(InputStream in, String format) throws IOException {
-        var baos = new ByteArrayOutputStream();
-
-        FFmpeg.atPath() // find ffmpeg on your PATH
-                .addInput(PipeInput.pumpFrom(in))
-                .addArgument("-map_metadata")
-                .addArgument("-1")
-                .addArgument("-c")
-                .addArgument("copy")
-                .addOutput(PipeOutput.pumpTo(baos)
-                        .setFormat(format))
-                .execute();
-
-        return new ByteArrayInputStream(baos.toByteArray());
     }
 
     /**

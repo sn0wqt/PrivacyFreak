@@ -21,7 +21,6 @@ import org.telegram.telegrambots.meta.api.objects.Document;
 import org.telegram.telegrambots.meta.api.objects.File;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Update;
-import org.telegram.telegrambots.meta.api.objects.Video;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
@@ -39,16 +38,14 @@ public class Bot implements LongPollingSingleThreadUpdateConsumer {
     // Set of supported file extensions for metadata reading
     private final Set<String> SUPPORTED_METADATA_FORMATS = Set.of(
             "jpg", "jpeg", "tiff", "tif",
-            "arw", "cr2", "nef", "orf", "rw2", "raf", // RAW formats
+            "arw", "cr2", "nef", "orf", "rw2", "raf",
             "psd", "png", "bmp", "gif", "ico", "pcx", "webp",
             "avi", "wav", "mov", "qt", "mp4", "m4v", "mp3", "eps",
             "heic", "heif", "avif");
 
     // Set of supported file extensions for metadata stripping
     private final Set<String> SUPPORTED_STRIPPING_FORMATS = Set.of(
-            "jpg", "jpeg", // ImageIO stripping
-            "mp4", "mov", "m4v", "mkv", "avi", "webm" // FFmpeg stripping
-    );
+            "jpg", "jpeg");
 
     public Bot(String botToken) {
         this.botToken = botToken;
@@ -92,8 +89,7 @@ public class Bot implements LongPollingSingleThreadUpdateConsumer {
                         .append("• Other: EPS, ICO, PCX\n\n");
 
                 helpText.append("Supported formats for metadata stripping:\n")
-                        .append("• Images: JPEG/JPG only\n")
-                        .append("• Videos: MP4, MOV, AVI, MKV, WebM\n");
+                        .append("• Images Only: JPEG/JPG only\n");
 
                 sendText(chatId, helpText.toString());
             }
@@ -118,12 +114,12 @@ public class Bot implements LongPollingSingleThreadUpdateConsumer {
             // Only support files now
             if (!msg.hasDocument()) {
                 sendText(chatId, "Please send media as a FILE attachment, or /cancel.\n" +
-                        "Regular photos and videos are already compressed by Telegram.");
+                        "Regular photos and videos are already compressed by Telegram. \n" +
+                        "Videos only work on Mobile when sent as a file.");
                 return;
             }
 
             Document doc = msg.getDocument();
-            Video video = msg.getVideo();
             String fileId = doc.getFileId();
             String filename = doc.getFileName();
 
@@ -172,16 +168,11 @@ public class Bot implements LongPollingSingleThreadUpdateConsumer {
                 telegramClient.execute(sendDoc);
             } else {
                 // Strip metadata
-                InputStream clean;
+                InputStream clean = Utils.stripImageMetadata(in);
+                sendDocument(chatId, clean, "stripped_" + filename);
 
-                if (ext.matches("jpe?g|jpg")) {
-                    clean = Utils.stripImageMetadata(in);
-                    sendDocument(chatId, clean, "stripped_" + filename);
-                } else {
-                    clean = Utils.stripVideoMetadata(in, ext);
-                    sendDocument(chatId, clean, "stripped_" + filename);
-                }
             }
+
         } catch (ImageProcessingException e) {
             sendText(chatId, "⚠️ Metadata error: " + e.getMessage());
         } catch (Exception e) {
