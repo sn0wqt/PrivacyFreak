@@ -21,6 +21,7 @@ import org.telegram.telegrambots.meta.api.objects.Document;
 import org.telegram.telegrambots.meta.api.objects.File;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.api.objects.Video;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
@@ -111,66 +112,78 @@ public class Bot implements LongPollingSingleThreadUpdateConsumer {
 
     private void handleMedia(long chatId, Message msg, Mode mode) {
         try {
-            // Only support files now
-            if (!msg.hasDocument()) {
-                sendText(chatId, "Please send media as a FILE attachment, or /cancel.\n" +
-                        "Regular photos and videos are already compressed by Telegram. \n" +
-                        "Videos only work on Mobile when sent as a file.");
+            // Check input based on mode
+            boolean validInput = (mode == Mode.METADATA) ? (msg.hasDocument() || msg.hasVideo()) : msg.hasDocument();
+
+            if (!validInput) {
+                String errorMsg = (mode == Mode.METADATA)
+                        ? "Please send a file as a FILE attachment (image or video) for metadata extraction, or /cancel."
+                        : "Please send a JPEG image as a FILE attachment to strip metadata, or /cancel.";
+                sendText(chatId, errorMsg);
+                pending.put(chatId, Mode.NONE);
                 return;
             }
 
-            Document doc = msg.getDocument();
-            String fileId = doc.getFileId();
-            String filename = doc.getFileName();
-
-            if (filename == null || filename.isEmpty()) {
-                filename = "file"; // Default name if none provided
+            // Extract file details
+            String fileId, filename;
+            if (msg.hasVideo()) {
+                Video video = msg.getVideo();
+                fileId = video.getFileId();
+                filename = video.getFileName();
+                if (filename == null || filename.isEmpty()) {
+                    filename = video.getFileId() + ".mp4";
+                }
+            } else {
+                Document doc = msg.getDocument();
+                fileId = doc.getFileId();
+                filename = doc.getFileName();
+                if (filename == null || filename.isEmpty()) {
+                    filename = doc.getFileId();
+                }
             }
 
             String ext = getFileExtension(filename).toLowerCase();
 
-            // Check if format is supported before downloading
-            if (mode == Mode.METADATA && !SUPPORTED_METADATA_FORMATS.contains(ext)) {
-                sendText(chatId, "⚠️ This file format is not supported for metadata reading.\n" +
-                        "Use /help to see supported formats.");
+            // Check format compatibility
+            Set<String> supportedFormats = (mode == Mode.METADATA) ? SUPPORTED_METADATA_FORMATS
+                    : SUPPORTED_STRIPPING_FORMATS;
+
+            if (!supportedFormats.contains(ext)) {
+                String formatMsg = (mode == Mode.METADATA)
+                        ? "⚠️ This file format (\"" + ext + "\") is not supported for metadata reading.\n" +
+                                "Use /help to see supported formats."
+                        : "⚠️ This file format (\"" + ext + "\") is not supported for metadata stripping.\n" +
+                                "Only JPEG/JPG images can be stripped.\n" +
+                                "Use /help to see supported formats.";
+                sendText(chatId, formatMsg);
                 pending.put(chatId, Mode.NONE);
                 return;
             }
 
-            if (mode == Mode.STRIP && !SUPPORTED_STRIPPING_FORMATS.contains(ext)) {
-                sendText(chatId, "⚠️ This file format is not supported for metadata stripping.\n" +
-                        "Only JPEG images and common video formats are supported.\n" +
-                        "Use /help to see supported formats.");
-                pending.put(chatId, Mode.NONE);
-                return;
-            }
-
-            // Download the file into memory
+            // Download and process file
             InputStream in = downloadFileInMemory(fileId);
 
             if (mode == Mode.METADATA) {
-                // Read metadata from any supported container
+                // Extract metadata
                 String meta = Utils.readMetadata(in, filename);
-
-                // Always send as text file, even if empty
                 if (meta.isEmpty()) {
                     meta = "No metadata found in this file.";
                 }
 
-                ByteArrayInputStream metaStream = new ByteArrayInputStream(meta.getBytes(StandardCharsets.UTF_8));
+                // Send as text file
+                ByteArrayInputStream metaStream = new ByteArrayInputStream(
+                        meta.getBytes(StandardCharsets.UTF_8));
                 InputFile txtFile = new InputFile(metaStream, "metadata_" + filename + ".txt");
 
-                SendDocument sendDoc = SendDocument.builder()
+                telegramClient.execute(SendDocument.builder()
                         .chatId(chatId)
                         .document(txtFile)
                         .caption("Metadata extracted from " + filename)
-                        .build();
-                telegramClient.execute(sendDoc);
+                        .build());
             } else {
-                // Strip metadata
+                // Strip metadata (JPEG only)
                 InputStream clean = Utils.stripImageMetadata(in);
                 sendDocument(chatId, clean, "stripped_" + filename);
-
             }
 
         } catch (ImageProcessingException e) {
