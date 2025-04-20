@@ -1,4 +1,4 @@
-# Privacy Freak Bot
+# PrivacyFreak Bot
 
 <p align="center">
   <img src="assets/logo.png" alt="Privacy Freak Bot Logo" width="200" height="200">
