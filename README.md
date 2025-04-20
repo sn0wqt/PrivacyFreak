@@ -1,7 +1,7 @@
 # Privacy Freak Bot
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sn0wqt/PrivacyFreak/assets/logo.png" alt="Privacy Freak Bot Logo" width="200" height="200">
+  <img src="assets/logo.png" alt="Privacy Freak Bot Logo" width="200" height="200">
 </p>
 
 <p align="center">
