@@ -156,4 +156,4 @@ This bot was created with a strong focus on user privacy. Unlike many online too
 
 Remember that metadata can reveal more than you think - from exact GPS coordinates where a photo was taken to the serial number of your device. Being mindful about what data your files contain before sharing them is an important step in protecting your digital privacy.
 
-Created by: @sn0wqt (2025-04-20)
+Created by: @sn0wqt 2025
