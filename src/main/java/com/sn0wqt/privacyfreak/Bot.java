@@ -6,8 +6,8 @@ import java.io.InputStream;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.drew.imaging.ImageProcessingException;
@@ -17,12 +17,9 @@ import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateC
 import org.telegram.telegrambots.meta.api.methods.GetFile;
 import org.telegram.telegrambots.meta.api.methods.send.SendDocument;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
-import org.telegram.telegrambots.meta.api.methods.send.SendVideo;
 import org.telegram.telegrambots.meta.api.objects.Document;
 import org.telegram.telegrambots.meta.api.objects.File;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
-import org.telegram.telegrambots.meta.api.objects.PhotoSize;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.Video;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
@@ -38,6 +35,20 @@ public class Bot implements LongPollingSingleThreadUpdateConsumer {
     }
 
     private final Map<Long, Mode> pending = new ConcurrentHashMap<>();
+
+    // Set of supported file extensions for metadata reading
+    private final Set<String> SUPPORTED_METADATA_FORMATS = Set.of(
+            "jpg", "jpeg", "tiff", "tif",
+            "arw", "cr2", "nef", "orf", "rw2", "raf", // RAW formats
+            "psd", "png", "bmp", "gif", "ico", "pcx", "webp",
+            "avi", "wav", "mov", "qt", "mp4", "m4v", "mp3", "eps",
+            "heic", "heif", "avif");
+
+    // Set of supported file extensions for metadata stripping
+    private final Set<String> SUPPORTED_STRIPPING_FORMATS = Set.of(
+            "jpg", "jpeg", // ImageIO stripping
+            "mp4", "mov", "m4v", "mkv", "avi", "webm" // FFmpeg stripping
+    );
 
     public Bot(String botToken) {
         this.botToken = botToken;
@@ -62,20 +73,37 @@ public class Bot implements LongPollingSingleThreadUpdateConsumer {
         // 2) otherwise treat as a command
         switch (text) {
             case "/start" -> sendText(chatId,
-                    "👋 Welcome! I can inspect or strip metadata from images/videos.\n" +
+                    "👋 Welcome! I can inspect or strip metadata from files.\n" +
                             "Use /metadata or /strip commands.");
-            case "/help" -> sendText(chatId,
-                    "Commands:\n" +
-                            "/metadata – inspect metadata\n" +
-                            "/strip    – strip metadata\n" +
-                            "/cancel   – cancel");
+            case "/help" -> {
+                StringBuilder helpText = new StringBuilder();
+                helpText.append("Commands:\n")
+                        .append("/metadata – inspect metadata\n")
+                        .append("/strip    – strip metadata\n")
+                        .append("/cancel   – cancel\n\n")
+                        .append("⚠️ Note: Send media as FILE attachments only.\n")
+                        .append("Regular photo/video messages are already compressed by Telegram.\n\n");
+
+                helpText.append("Supported formats for metadata reading:\n")
+                        .append("• Images: JPEG, TIFF, PNG, BMP, GIF, WebP, PSD, HEIF/AVIF\n")
+                        .append("• RAW Files: ARW (Sony), CR2 (Canon), NEF (Nikon), ORF (Olympus), RW2 (Panasonic), RAF (Fujifilm)\n")
+                        .append("• Videos: MP4, QuickTime/MOV, AVI\n")
+                        .append("• Audio: WAV, MP3\n")
+                        .append("• Other: EPS, ICO, PCX\n\n");
+
+                helpText.append("Supported formats for metadata stripping:\n")
+                        .append("• Images: JPEG/JPG only\n")
+                        .append("• Videos: MP4, MOV, AVI, MKV, WebM\n");
+
+                sendText(chatId, helpText.toString());
+            }
             case "/metadata" -> {
                 pending.put(chatId, Mode.METADATA);
-                sendText(chatId, "Please send a photo, video, or file to inspect metadata.");
+                sendText(chatId, "Please send a file as a FILE attachment to inspect metadata.");
             }
             case "/strip" -> {
                 pending.put(chatId, Mode.STRIP);
-                sendText(chatId, "Please send a photo, video, or file to strip metadata.");
+                sendText(chatId, "Please send a JPEG image or video as a FILE attachment to strip metadata.");
             }
             case "/cancel" -> {
                 pending.put(chatId, Mode.NONE);
@@ -87,35 +115,37 @@ public class Bot implements LongPollingSingleThreadUpdateConsumer {
 
     private void handleMedia(long chatId, Message msg, Mode mode) {
         try {
-            // Determine fileId, filename, and media type
-            String fileId;
-            String filename;
-            boolean isPhoto = false;
-            boolean isVideo = false;
-            boolean isDocument = false;
+            // Only support files now
+            if (!msg.hasDocument()) {
+                sendText(chatId, "Please send media as a FILE attachment, or /cancel.\n" +
+                        "Regular photos and videos are already compressed by Telegram.");
+                return;
+            }
 
-            if (msg.hasPhoto()) {
-                List<PhotoSize> photos = msg.getPhoto();
-                PhotoSize photo = photos.get(photos.size() - 1);
-                fileId = photo.getFileId();
-                filename = photo.getFileId() + ".jpg";
-                isPhoto = true;
-            } else if (msg.hasVideo()) {
-                Video video = msg.getVideo();
-                fileId = video.getFileId();
-                String orig = video.getFileName();
-                String ext = (orig != null && orig.contains("."))
-                        ? orig.substring(orig.lastIndexOf('.') + 1)
-                        : "mp4";
-                filename = video.getFileId() + "." + ext;
-                isVideo = true;
-            } else if (msg.hasDocument()) {
-                Document doc = msg.getDocument();
-                fileId = doc.getFileId();
-                filename = doc.getFileName();
-                isDocument = true;
-            } else {
-                sendText(chatId, "Please send a photo, video, or file, or /cancel.");
+            Document doc = msg.getDocument();
+            Video video = msg.getVideo();
+            String fileId = doc.getFileId();
+            String filename = doc.getFileName();
+
+            if (filename == null || filename.isEmpty()) {
+                filename = "file"; // Default name if none provided
+            }
+
+            String ext = getFileExtension(filename).toLowerCase();
+
+            // Check if format is supported before downloading
+            if (mode == Mode.METADATA && !SUPPORTED_METADATA_FORMATS.contains(ext)) {
+                sendText(chatId, "⚠️ This file format is not supported for metadata reading.\n" +
+                        "Use /help to see supported formats.");
+                pending.put(chatId, Mode.NONE);
+                return;
+            }
+
+            if (mode == Mode.STRIP && !SUPPORTED_STRIPPING_FORMATS.contains(ext)) {
+                sendText(chatId, "⚠️ This file format is not supported for metadata stripping.\n" +
+                        "Only JPEG images and common video formats are supported.\n" +
+                        "Use /help to see supported formats.");
+                pending.put(chatId, Mode.NONE);
                 return;
             }
 
@@ -125,35 +155,31 @@ public class Bot implements LongPollingSingleThreadUpdateConsumer {
             if (mode == Mode.METADATA) {
                 // Read metadata from any supported container
                 String meta = Utils.readMetadata(in, filename);
+
+                // Always send as text file, even if empty
+                if (meta.isEmpty()) {
+                    meta = "No metadata found in this file.";
+                }
+
                 ByteArrayInputStream metaStream = new ByteArrayInputStream(meta.getBytes(StandardCharsets.UTF_8));
-                InputFile txtFile = new InputFile(metaStream, "metadata.txt");
+                InputFile txtFile = new InputFile(metaStream, "metadata_" + filename + ".txt");
 
                 SendDocument sendDoc = SendDocument.builder()
                         .chatId(chatId)
                         .document(txtFile)
-                        .caption("Metadata was too long, so here’s a text file.")
+                        .caption("Metadata extracted from " + filename)
                         .build();
                 telegramClient.execute(sendDoc);
-                // sendText(chatId, "```\n" + meta + "\n```");
             } else {
                 // Strip metadata
                 InputStream clean;
-                String ext = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
 
-                if (isPhoto) {
+                if (ext.matches("jpe?g|jpg")) {
                     clean = Utils.stripImageMetadata(in);
-                    sendPhoto(chatId, clean, "stripped_" + filename);
-                } else if (isVideo) {
+                    sendDocument(chatId, clean, "stripped_" + filename);
+                } else {
                     clean = Utils.stripVideoMetadata(in, ext);
-                    sendVideo(chatId, clean, "stripped_" + filename);
-                } else if (isDocument) { // document fallback (could be image or video as file)
-                    if (ext.matches("jpe?g|png|gif")) {
-                        clean = Utils.stripImageMetadata(in);
-                        sendDocument(chatId, clean, "stripped_" + filename);
-                    } else {
-                        clean = Utils.stripVideoMetadata(in, ext);
-                        sendDocument(chatId, clean, "stripped_" + filename);
-                    }
+                    sendDocument(chatId, clean, "stripped_" + filename);
                 }
             }
         } catch (ImageProcessingException e) {
@@ -164,6 +190,14 @@ public class Bot implements LongPollingSingleThreadUpdateConsumer {
         } finally {
             pending.put(chatId, Mode.NONE);
         }
+    }
+
+    private String getFileExtension(String filename) {
+        int dotIndex = filename.lastIndexOf(".");
+        if (dotIndex > 0 && dotIndex < filename.length() - 1) {
+            return filename.substring(dotIndex + 1);
+        }
+        return "";
     }
 
     private void sendText(long chatId, String text) {
@@ -178,38 +212,18 @@ public class Bot implements LongPollingSingleThreadUpdateConsumer {
         }
     }
 
-    private void sendPhoto(long chatId, InputStream in, String filename) throws TelegramApiException {
-        InputFile file = new InputFile(in, filename);
-        SendPhoto send = SendPhoto.builder()
-                .chatId(chatId)
-                .photo(file)
-                .caption("Here’s your image without metadata.")
-                .build();
-        telegramClient.execute(send);
-    }
-
-    private void sendVideo(long chatId, InputStream in, String filename) throws TelegramApiException {
-        InputFile file = new InputFile(in, filename);
-        SendVideo send = SendVideo.builder()
-                .chatId(chatId)
-                .video(file)
-                .caption("Here’s your video without metadata.")
-                .build();
-        telegramClient.execute(send);
-    }
-
     private void sendDocument(long chatId, InputStream in, String filename) throws TelegramApiException {
         InputFile file = new InputFile(in, filename);
         SendDocument send = SendDocument.builder()
                 .chatId(chatId)
                 .document(file)
-                .caption("Here’s your file without metadata.")
+                .caption("Here's your file without metadata.")
                 .build();
         telegramClient.execute(send);
     }
 
     /**
-     * Downloads a Telegram file (photo, video, or document) into memory.
+     * Downloads a Telegram file (document) into memory.
      */
     private ByteArrayInputStream downloadFileInMemory(String fileId) throws Exception {
         GetFile getFile = GetFile.builder()
@@ -221,7 +235,8 @@ public class Bot implements LongPollingSingleThreadUpdateConsumer {
         URL url = uri.toURL();
 
         try (InputStream is = url.openStream();
-                var baos = new ByteArrayOutputStream()) {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+
             byte[] buf = new byte[8_192];
             int n;
             while ((n = is.read(buf)) != -1) {
