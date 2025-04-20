@@ -1,4 +1,4 @@
-package com.sn0wqt.privacyfreak;
+package com.sn0wqt.privacyfreak.utils;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -23,15 +23,10 @@ import com.drew.metadata.Directory;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.Tag;
 
-public class Utils {
-
+public class MetadataUtils {
     /**
      * Reads metadata from various file formats (images, videos, audio)
      * using metadata-extractor library which automatically detects file type.
-     *
-     * @param in       the file's bytes
-     * @param filename the original filename (mainly for error reporting)
-     * @return String containing the metadata as text
      */
     public static String readMetadata(InputStream in, String filename)
             throws IOException, ImageProcessingException {
@@ -73,7 +68,8 @@ public class Utils {
     /**
      * Strips metadata from JPEG images using Apache Commons Imaging ExifRewriter
      * without re-encoding the image data.
-     * see {@link https://dev.exiv2.org/projects/exiv2/wiki/The_Metadata_in_JPEG_files}
+     * see
+     * {@link https://dev.exiv2.org/projects/exiv2/wiki/The_Metadata_in_JPEG_files}
      * for more details on JPEG segments and metadata structures.
      * 
      * @param in original image bytes
@@ -84,23 +80,23 @@ public class Utils {
         // Set of markers to remove (e.g. JFIF(APP0), ICC (APP2))
         // 0xE0 = APP0 (JFIF), 0xE2 = APP2 (ICC)
         Set<Integer> markersToRemove = Set.of(0xE0, 0xE2);
-        
+
         // 1) slurp all bytes so we can probe & re‑use
         byte[] data = in.readAllBytes();
-        
+
         // 2) detect format
         String format;
         try (ImageInputStream iis = ImageIO.createImageInputStream(new ByteArrayInputStream(data))) {
             Iterator<ImageReader> readers = ImageIO.getImageReaders(iis);
             if (!readers.hasNext())
-            throw new IOException("Unrecognized image format");
+                throw new IOException("Unrecognized image format");
             format = readers.next().getFormatName().toLowerCase();
         }
-        
+
         if (!format.equals("jpeg") && !format.equals("jpg")) {
             throw new IOException("Only JPEG/JPG supported");
         }
-        
+
         // Note: APP1 is EXIF, APP13 is IPTC, APPX is XMP
 
         try {
