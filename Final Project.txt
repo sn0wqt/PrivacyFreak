@@ -1,6 +1,0 @@
-Project Name: PrivacyFreak Bot
-Name: Asaad Falah Rasul
-GitHub: sn0wqt
-edX: oxymocha
-City/Country: Sulaymaniyah/Iraq
-Date: 4/21/2025

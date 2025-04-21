@@ -8,13 +8,13 @@
   <em>A Telegram bot that helps protect your privacy by inspecting and removing metadata from your files</em>
 </p>
 
-#### Video Demo: 
+<!-- #### Video Demo: 
 
 <p>
   <a href="https://youtu.be/3wdisua1wrY">
     <img src="https://img.shields.io/badge/▶-Watch%20Demo-FF0000?style=for-the-badge&logo=youtube" alt="Watch Demo" width="160">
   </a>
-</p>
+</p> -->
 
 #### Description:
 
