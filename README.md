@@ -12,10 +12,10 @@
 
 <p align="center">
   <a href="https://youtu.be/3wdisua1wrY">
-    <img src="https://img.youtube.com/vi/3wdisua1wrY/maxresdefault.jpg" alt="Privacy Freak Bot Demo" width="600">
+    <img src="https://img.youtube.com/vi/3wdisua1wrY/maxresdefault.jpg" alt="Privacy Freak Bot Demo" width="600" style="border-radius:10px">
+    <br>
+    <img src="https://img.shields.io/badge/▶-Watch%20Demo-FF0000?style=for-the-badge&logo=youtube" alt="Watch Demo" width="160">
   </a>
-  <br>
-  <em>Click to watch the demo video</em>
 </p>
 
 #### Description:
